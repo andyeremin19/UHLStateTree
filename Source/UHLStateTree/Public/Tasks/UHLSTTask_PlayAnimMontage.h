@@ -91,8 +91,6 @@ struct UHLSTATETREE_API FUHLSTTask_PlayAnimMontage : public FStateTreeTaskCommon
 	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
 
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
-	// Lightweight tick: only checks flags set by montage delegates to finish the task.
-	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 
 #if WITH_EDITOR
@@ -103,7 +101,14 @@ struct UHLSTATETREE_API FUHLSTTask_PlayAnimMontage : public FStateTreeTaskCommon
 
 private:
 	USkeletalMeshComponent* ResolveMesh(const FInstanceDataType& InstanceData) const;
-	bool IsMontagePlaying(USkeletalMeshComponent* Mesh, const UAnimMontage* Montage) const;
+	
+	/**
+	 * PlayMontage and bind callback
+	 */
+	bool PlayMontage(
+		FStateTreeExecutionContext& Context,
+		FInstanceDataType& InstanceData,
+		USkeletalMeshComponent* InSkeletalMeshComponent) const;
 };
 
 
