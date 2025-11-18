@@ -73,50 +73,114 @@ bool FUHLSTTask_PlayAnimMontage::PlayMontage(
 			return;
 		}
 
-		if (!InstanceDataPtr->bFinishTaskOnBlendOut)
+		const bool bBindBlendOut = InstanceDataPtr->bFinishTaskOnBlendOut;
+		const bool bBindEnd = InstanceDataPtr->bFinishTaskOnCompleted || InstanceDataPtr->bFinishTaskOnInterrupted;
+		if (!bBindBlendOut && !bBindEnd)
 		{
 			return;
 		}
 
 		InstanceDataPtr->BoundAnimInstance = AnimInstance;
 
-		FOnMontageBlendingOutStarted BlendOutDelegate;
-		BlendOutDelegate.BindLambda(
-			[WeakContext](UAnimMontage* Montage, bool bInterrupted)
-			{
-				FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
-				if (!StrongContext.IsValid())
+		if (bBindBlendOut)
+		{
+			FOnMontageBlendingOutStarted BlendOutDelegate;
+			BlendOutDelegate.BindLambda(
+				[WeakContext](UAnimMontage* Montage, bool bInterrupted)
 				{
-					return;
-				}
+					FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
+					if (!StrongContext.IsValid())
+					{
+						return;
+					}
 
-				FUHLSTTask_PlayAnimMontage::FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FUHLSTTask_PlayAnimMontage::FInstanceDataType>();
-				if (!InstanceDataPtr)
+					FUHLSTTask_PlayAnimMontage::FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FUHLSTTask_PlayAnimMontage::FInstanceDataType>();
+					if (!InstanceDataPtr)
+					{
+						return;
+					}
+
+					if (Montage != InstanceDataPtr->AnimMontage)
+					{
+						return;
+					}
+
+					if (InstanceDataPtr->bBlendOutTriggered)
+					{
+						return;
+					}
+
+					InstanceDataPtr->bBlendOutTriggered = true;
+					InstanceDataPtr->bInterruptedTriggered |= bInterrupted;
+					InstanceDataPtr->bCompletedTriggered |= !bInterrupted;
+
+					const bool bShouldSucceed = InstanceDataPtr->bSucceededResult && !bInterrupted;
+					const EStateTreeFinishTaskType FinishType = bShouldSucceed ? EStateTreeFinishTaskType::Succeeded : EStateTreeFinishTaskType::Failed;
+					WeakContext.FinishTask(FinishType);
+				}
+			);
+
+			AnimInstance->Montage_SetBlendingOutDelegate(BlendOutDelegate, InstanceDataPtr->AnimMontage);
+		}
+
+		if (bBindEnd)
+		{
+			FOnMontageEnded EndDelegate;
+			EndDelegate.BindLambda(
+				[WeakContext](UAnimMontage* Montage, bool bInterrupted)
 				{
-					return;
+					FStateTreeStrongExecutionContext StrongContext = WeakContext.MakeStrongExecutionContext();
+					if (!StrongContext.IsValid())
+					{
+						return;
+					}
+
+					FUHLSTTask_PlayAnimMontage::FInstanceDataType* InstanceDataPtr = StrongContext.GetInstanceDataPtr<FUHLSTTask_PlayAnimMontage::FInstanceDataType>();
+					if (!InstanceDataPtr)
+					{
+						return;
+					}
+
+					if (Montage != InstanceDataPtr->AnimMontage)
+					{
+						return;
+					}
+
+					if (InstanceDataPtr->bBlendOutTriggered)
+					{
+						return;
+					}
+
+					if (bInterrupted)
+					{
+						if (!InstanceDataPtr->bFinishTaskOnInterrupted || InstanceDataPtr->bInterruptedTriggered)
+						{
+							return;
+						}
+
+						InstanceDataPtr->bInterruptedTriggered = true;
+
+						const bool bShouldSucceed = InstanceDataPtr->bSucceededResult && !bInterrupted;
+						const EStateTreeFinishTaskType FinishType = bShouldSucceed ? EStateTreeFinishTaskType::Succeeded : EStateTreeFinishTaskType::Failed;
+						WeakContext.FinishTask(FinishType);
+						return;
+					}
+
+					if (!InstanceDataPtr->bFinishTaskOnCompleted || InstanceDataPtr->bCompletedTriggered)
+					{
+						return;
+					}
+
+					InstanceDataPtr->bCompletedTriggered = true;
+
+					const bool bShouldSucceed = InstanceDataPtr->bSucceededResult;
+					const EStateTreeFinishTaskType FinishType = bShouldSucceed ? EStateTreeFinishTaskType::Succeeded : EStateTreeFinishTaskType::Failed;
+					WeakContext.FinishTask(FinishType);
 				}
+			);
 
-				if (Montage != InstanceDataPtr->AnimMontage)
-				{
-					return;
-				}
-
-				if (InstanceDataPtr->bBlendOutTriggered)
-				{
-					return;
-				}
-
-				InstanceDataPtr->bBlendOutTriggered = true;
-				InstanceDataPtr->bInterruptedTriggered |= bInterrupted;
-				InstanceDataPtr->bCompletedTriggered |= !bInterrupted;
-
-				const bool bShouldSucceed = InstanceDataPtr->bSucceededResult && !bInterrupted;
-				const EStateTreeFinishTaskType FinishType = bShouldSucceed ? EStateTreeFinishTaskType::Succeeded : EStateTreeFinishTaskType::Failed;
-				WeakContext.FinishTask(FinishType);
-			}
-		);
-
-		AnimInstance->Montage_SetBlendingOutDelegate(BlendOutDelegate, InstanceDataPtr->AnimMontage);
+			AnimInstance->Montage_SetEndDelegate(EndDelegate, InstanceDataPtr->AnimMontage);
+		}
 	});
 
 	bPlayedSuccessfully = (MontageLength > 0.f);
@@ -126,6 +190,10 @@ bool FUHLSTTask_PlayAnimMontage::PlayMontage(
 EStateTreeRunStatus FUHLSTTask_PlayAnimMontage::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	InstanceData.bCompletedTriggered = false;
+	InstanceData.bInterruptedTriggered = false;
+	InstanceData.bBlendOutTriggered = false;
+	InstanceData.BoundAnimInstance.Reset();
 	if (!InstanceData.Character || !InstanceData.AnimMontage)
 	{
 		return EStateTreeRunStatus::Failed;
