@@ -9,7 +9,9 @@ Support: `UE5.5 - UE5.6`
 
 - Cooldowns by gameplay tag
 - InRange and other nodes similar to [UnrealHelperLibrary](https://github.com/Ciberusps/unreal-helper-library) BehaviorTree nodes
-- **Anim notify** `UUHL_AN_SendStateTreeEvent` to raise State Tree events from montages/sequences
+- Evaluator **Owner ASC Tags** — owned GAS tags from context owner into `OutTags`
+- **Anim notify** `UUHL_AN_SendStateTreeEvent` to raise State Tree events from 
+montages/sequences
 
 
 ## 🚀 Install & ⬆️ Update
@@ -39,6 +41,7 @@ TODO how to setup in project
 >   - [InRange]()
 >   - [InAngle]()
 > - Evaluators
+>   - [Owner ASC Tags](#owner-asc-tags)
 >   - [TODO: GetGASGamplayTags]()
 >   - [TODO: GetSelfGASGamplayTags]() - child of GetGASGamplayTags
 >   - [TODO: GetEnemyGASGamplayTags]() - child of GetGASGamplayTags
@@ -59,6 +62,10 @@ TODO how to setup in project
 
 Attach this component to an `AAIController` in Blueprint or C++.
 In `UE5.5` there is bug with LinkedStateTreeOverrides, this component adds ability to use LinkedStateTreeOverrides  
+
+### Owner ASC Tags
+
+Evaluator **`FUHLSTEvaluator_OwnerASCTags`**: on **tree start** resolves `UAbilitySystemComponent` for **Owner** (or context **`Actor`** if Owner is unset) and caches it; each **tick** copies **`GetOwnedGameplayTags()`** into **`OutTags`** for bindings. **`TreeStop`** clears cache and output.
 
 ### Animation notifies
 
