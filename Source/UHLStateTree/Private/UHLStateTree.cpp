@@ -6,6 +6,7 @@
 
 #define LOCTEXT_NAMESPACE "FUHLStateTreeModule"
 
+DEFINE_LOG_CATEGORY(LogUHLStateTree);
 
 void FUHLStateTreeModule::StartupModule()
 {

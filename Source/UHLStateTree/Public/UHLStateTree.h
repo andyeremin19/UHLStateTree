@@ -4,6 +4,7 @@
 
 #include "Modules/ModuleManager.h"
 
+UHLSTATETREE_API DECLARE_LOG_CATEGORY_EXTERN(LogUHLStateTree, Log, All);
 
 class FUHLStateTreeModule : public IModuleInterface
 {
