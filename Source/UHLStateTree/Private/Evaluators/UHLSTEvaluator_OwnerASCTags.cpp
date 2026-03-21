@@ -62,7 +62,7 @@ void FUHLSTEvaluator_OwnerASCTags::TreeStop(FStateTreeExecutionContext& Context)
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	InstanceData.CachedASC = nullptr;
-	InstanceData.OutTags.Reset();
+	InstanceData.Tags.Reset();
 }
 
 void FUHLSTEvaluator_OwnerASCTags::Tick(FStateTreeExecutionContext& Context, const float /*DeltaTime*/) const
@@ -78,11 +78,11 @@ void FUHLSTEvaluator_OwnerASCTags::Tick(FStateTreeExecutionContext& Context, con
 
 	if (IsValid(ASC))
 	{
-		InstanceData.OutTags = ASC->GetOwnedGameplayTags();
+		InstanceData.Tags = ASC->GetOwnedGameplayTags();
 	}
 	else
 	{
-		InstanceData.OutTags.Reset();
+		InstanceData.Tags.Reset();
 	}
 }
 
@@ -93,7 +93,7 @@ FText FUHLSTEvaluator_OwnerASCTags::GetDescription(
 	const IStateTreeBindingLookup&,
 	const EStateTreeNodeFormatting) const
 {
-	return LOCTEXT("EvaluatorDescription", "Owner ASC tags → OutTags");
+	return LOCTEXT("EvaluatorDescription", "Owner ASC tags → Tags");
 }
 #endif
 

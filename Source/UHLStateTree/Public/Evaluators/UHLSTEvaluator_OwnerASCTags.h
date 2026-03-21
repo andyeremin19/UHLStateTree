@@ -34,12 +34,12 @@ struct UHLSTATETREE_API FUHLSTEvaluator_OwnerASCTagsInstanceData
 	 * Owned gameplay tags copied from the cached ASC each Tick (empty if no valid ASC).
 	 */
 	UPROPERTY(EditAnywhere, Category = Output)
-	FGameplayTagContainer OutTags;
+	FGameplayTagContainer Tags;
 };
 
 /**
  * Exposes the owner's ASC gameplay tags to the State Tree each frame.
- * Resolves and caches UAbilitySystemComponent once when the tree starts (TreeStart), then updates OutTags on Tick.
+ * Resolves and caches UAbilitySystemComponent once when the tree starts (TreeStart), then updates Tags on Tick.
  */
 USTRUCT(meta = (DisplayName = "Owner ASC Tags", Category = "UHLStateTree"))
 struct UHLSTATETREE_API FUHLSTEvaluator_OwnerASCTags : public FStateTreeEvaluatorCommonBase
