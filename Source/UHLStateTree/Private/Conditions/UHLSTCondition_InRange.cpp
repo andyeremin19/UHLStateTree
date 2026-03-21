@@ -5,6 +5,7 @@
 #include "StateTreeExecutionContext.h"
 #include "StateTreeNodeDescriptionHelpers.h"
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/Character.h"
 #include "Internationalization/Internationalization.h"
 #include "DrawDebugHelpers.h"
 
@@ -12,55 +13,86 @@
 
 #define LOCTEXT_NAMESPACE "UHLSTCondition_InRange"
 
-namespace {
-    static float GetCapsuleRadiusSafe(const ACharacter* Character)
-    {
-        if (!Character) return 0.0f;
-        if (const UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
-        {
-            return Capsule->GetScaledCapsuleRadius();
-        }
-        return 0.0f;
-    }
+namespace UHLSTConditionInRange_Private
+{
+	static float GetCapsuleRadiusSafe(const ACharacter* Character)
+	{
+		if (!Character)
+		{
+			return 0.0f;
+		}
+		if (const UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
+		{
+			return Capsule->GetScaledCapsuleRadius();
+		}
+		return 0.0f;
+	}
 
-    static float GetCapsuleHalfHeightSafe(const ACharacter* Character)
-    {
-        if (!Character) return 0.0f;
-        if (const UCapsuleComponent* Capsule = Character->GetCapsuleComponent())
-        {
-            return Capsule->GetScaledCapsuleHalfHeight();
-        }
-        return 0.0f;
-    }
+	/**
+	 * Keeps CachedCharacter aligned with SourceActor: repeats Cast<ACharacter> only when the bound actor pointer changes.
+	 */
+	static void SyncCharacterCache(
+		AActor* const SourceActor,
+		TObjectPtr<AActor>& CachedKey,
+		TObjectPtr<ACharacter>& CachedCharacter)
+	{
+		if (CachedKey.Get() == SourceActor)
+		{
+			return;
+		}
+		CachedKey = SourceActor;
+		CachedCharacter = IsValid(SourceActor) ? Cast<ACharacter>(SourceActor) : nullptr;
+	}
 }
 
 bool FUHLSTCondition_InRange::TestCondition(FStateTreeExecutionContext& Context) const
 {
-	const FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 
 	if (!IsValid(InstanceData.Character))
 	{
 		return false;
 	}
 
+	UHLSTConditionInRange_Private::SyncCharacterCache(
+		InstanceData.Character,
+		InstanceData.CachedSelfActorKey,
+		InstanceData.CachedSelfCharacter);
+
+	const bool bUsesOtherActor = IsValid(InstanceData.OtherCharacter);
+	if (bUsesOtherActor)
+	{
+		UHLSTConditionInRange_Private::SyncCharacterCache(
+			InstanceData.OtherCharacter,
+			InstanceData.CachedOtherActorKey,
+			InstanceData.CachedOtherCharacter);
+	}
+	else
+	{
+		InstanceData.CachedOtherActorKey = nullptr;
+		InstanceData.CachedOtherCharacter = nullptr;
+	}
+
 	const FVector SelfLocation = InstanceData.Character->GetActorLocation();
 
 	FVector TargetLocation = InstanceData.Location;
-	if (IsValid(InstanceData.OtherCharacter))
+	if (bUsesOtherActor)
 	{
 		TargetLocation = InstanceData.OtherCharacter->GetActorLocation();
 	}
 
 	float Distance = FVector::Dist(SelfLocation, TargetLocation);
 
-	if (InstanceData.bIncludeSelfCapsuleRadius)
+	ACharacter* const SelfAsCharacter = InstanceData.CachedSelfCharacter.Get();
+	if (InstanceData.bIncludeSelfCapsuleRadius && SelfAsCharacter)
 	{
-		Distance -= GetCapsuleRadiusSafe(InstanceData.Character);
+		Distance -= UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(SelfAsCharacter);
 	}
 
-	if (IsValid(InstanceData.OtherCharacter) && InstanceData.bIncludeTargetCapsuleRadius)
+	ACharacter* const OtherAsCharacter = InstanceData.CachedOtherCharacter.Get();
+	if (bUsesOtherActor && InstanceData.bIncludeTargetCapsuleRadius && OtherAsCharacter)
 	{
-		Distance -= GetCapsuleRadiusSafe(InstanceData.OtherCharacter);
+		Distance -= UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(OtherAsCharacter);
 	}
 
 	Distance = FMath::Max(0.0f, Distance);
@@ -93,7 +125,7 @@ bool FUHLSTCondition_InRange::TestCondition(FStateTreeExecutionContext& Context)
 			// Use actor locations (capsule centers) to avoid vertical offset above the head
 			const FVector SelfCenter = SelfLocation;
 			FVector OtherCenter = TargetLocation;
-			if (IsValid(InstanceData.OtherCharacter))
+			if (bUsesOtherActor)
 			{
 				OtherCenter = InstanceData.OtherCharacter->GetActorLocation();
 			}
@@ -106,8 +138,12 @@ bool FUHLSTCondition_InRange::TestCondition(FStateTreeExecutionContext& Context)
 				Dir /= DirLen;
 			}
 
-			float SelfOffset = InstanceData.bIncludeSelfCapsuleRadius ? GetCapsuleRadiusSafe(InstanceData.Character) : 0.0f;
-			float OtherOffset = (IsValid(InstanceData.OtherCharacter) && InstanceData.bIncludeTargetCapsuleRadius) ? GetCapsuleRadiusSafe(InstanceData.OtherCharacter) : 0.0f;
+			const float SelfOffset = (InstanceData.bIncludeSelfCapsuleRadius && SelfAsCharacter)
+				? UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(SelfAsCharacter)
+				: 0.0f;
+			const float OtherOffset = (bUsesOtherActor && InstanceData.bIncludeTargetCapsuleRadius && OtherAsCharacter)
+				? UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(OtherAsCharacter)
+				: 0.0f;
 
 			const FVector Start = SelfCenter + Dir * SelfOffset;
 			const FVector End = OtherCenter - Dir * OtherOffset;
@@ -131,8 +167,12 @@ bool FUHLSTCondition_InRange::TestCondition(FStateTreeExecutionContext& Context)
 			DrawDebugString(World, Mid, Params, nullptr, LineColor, InstanceData.DebugDuration, true);
 
 			// Visualize min/max effective ranges as circles around self center
-			const float SelfOffsetForRing = InstanceData.bIncludeSelfCapsuleRadius ? GetCapsuleRadiusSafe(InstanceData.Character) : 0.0f;
-			const float OtherOffsetForRing = (IsValid(InstanceData.OtherCharacter) && InstanceData.bIncludeTargetCapsuleRadius) ? GetCapsuleRadiusSafe(InstanceData.OtherCharacter) : 0.0f;
+			const float SelfOffsetForRing = (InstanceData.bIncludeSelfCapsuleRadius && SelfAsCharacter)
+				? UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(SelfAsCharacter)
+				: 0.0f;
+			const float OtherOffsetForRing = (bUsesOtherActor && InstanceData.bIncludeTargetCapsuleRadius && OtherAsCharacter)
+				? UHLSTConditionInRange_Private::GetCapsuleRadiusSafe(OtherAsCharacter)
+				: 0.0f;
 			const int32 Segments = 48;
 			if (InstanceData.Range.HasLowerBound())
 			{
@@ -177,22 +217,22 @@ FText FUHLSTCondition_InRange::GetDescription(const FGuid& ID, FStateTreeDataVie
 
 	// Treat property as set if either a direct value is provided or there is a binding
 	const FPropertyBindingPath TargetPath(ID, GET_MEMBER_NAME_CHECKED(FUHLSTCondition_InRangeInstanceData, OtherCharacter));
-	const bool bIsOtherCharacterBound = !BindingLookup.GetBindingSourceDisplayName(TargetPath).IsEmpty();
-	const bool bHasTargetCharacter = InstanceData->OtherCharacter != nullptr || bIsOtherCharacterBound;
+	const bool bIsOtherActorBound = !BindingLookup.GetBindingSourceDisplayName(TargetPath).IsEmpty();
+	const bool bHasTargetActor = InstanceData->OtherCharacter != nullptr || bIsOtherActorBound;
 
-    FText Prefix;
-    if (bHasTargetCharacter)
-    {
-        Prefix = InstanceData->bInverse
-            ? LOCTEXT("NotInRangeEnemyPrefix", "Enemy is NOT in range ")
-            : LOCTEXT("InRangeEnemyPrefix", "Enemy is in range ");
-    }
-    else
-    {
-        Prefix = InstanceData->bInverse
-            ? LOCTEXT("NotInRangeLocationPrefix", "Location is NOT in range ")
-            : LOCTEXT("InRangeLocationPrefix", "Location is in range ");
-    }
+	FText Prefix;
+	if (bHasTargetActor)
+	{
+		Prefix = InstanceData->bInverse
+			? LOCTEXT("NotInRangeEnemyPrefix", "Enemy is NOT in range ")
+			: LOCTEXT("InRangeEnemyPrefix", "Enemy is in range ");
+	}
+	else
+	{
+		Prefix = InstanceData->bInverse
+			? LOCTEXT("NotInRangeLocationPrefix", "Location is NOT in range ")
+			: LOCTEXT("InRangeLocationPrefix", "Location is in range ");
+	}
 
 	FText RangeText = FormatRangeText(InstanceData->Range);
 
