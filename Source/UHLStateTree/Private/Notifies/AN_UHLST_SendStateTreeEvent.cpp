@@ -1,22 +1,22 @@
 // Pavel Penkov 2025 All Rights Reserved.
 
-#include "Notifies/UHL_AN_SendStateTreeEvent.h"
+#include "Notifies/AN_UHLST_SendStateTreeEvent.h"
 
 #include "UHLStateTree.h"
 #include "Components/StateTreeComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 
-#include UE_INLINE_GENERATED_CPP_BY_NAME(UHL_AN_SendStateTreeEvent)
+#include UE_INLINE_GENERATED_CPP_BY_NAME(AN_UHLST_SendStateTreeEvent)
 
 #if WITH_EDITOR
-FLinearColor UUHL_AN_SendStateTreeEvent::GetEditorColor()
+FLinearColor UAN_UHLST_SendStateTreeEvent::GetEditorColor()
 {
 	return FLinearColor(FColor(46, 139, 87));
 }
 #endif
 
-FString UUHL_AN_SendStateTreeEvent::GetNotifyName_Implementation() const
+FString UAN_UHLST_SendStateTreeEvent::GetNotifyName_Implementation() const
 {
 	if (EventTag.IsValid())
 	{
@@ -25,7 +25,7 @@ FString UUHL_AN_SendStateTreeEvent::GetNotifyName_Implementation() const
 	return FString(TEXT("UHL State Tree · (invalid tag)"));
 }
 
-UStateTreeComponent* UUHL_AN_SendStateTreeEvent::ResolveStateTreeComponent(AActor* const MeshOwner) const
+UStateTreeComponent* UAN_UHLST_SendStateTreeEvent::ResolveStateTreeComponent(AActor* const MeshOwner) const
 {
 	if (!IsValid(MeshOwner))
 	{
@@ -67,7 +67,7 @@ UStateTreeComponent* UUHL_AN_SendStateTreeEvent::ResolveStateTreeComponent(AActo
 	return nullptr;
 }
 
-void UUHL_AN_SendStateTreeEvent::Notify(
+void UAN_UHLST_SendStateTreeEvent::Notify(
 	USkeletalMeshComponent* MeshComp,
 	UAnimSequenceBase* Animation,
 	const FAnimNotifyEventReference& EventReference)

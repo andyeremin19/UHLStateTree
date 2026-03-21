@@ -62,7 +62,7 @@ In `UE5.5` there is bug with LinkedStateTreeOverrides, this component adds abili
 
 ### Animation notifies
 
-**`UUHL_AN_SendStateTreeEvent`** — from a montage/sequence calls `UStateTreeComponent::SendStateTreeEvent` (gameplay tag + optional `FInstancedStruct` payload). **`Resolve`** picks where to find the component (controller / owner / both);
+**`UAN_UHL_SendStateTreeEvent`** — from a montage/sequence calls `UStateTreeComponent::SendStateTreeEvent` (gameplay tag + optional `FInstancedStruct` payload). **`Resolve`** picks where to find the component (controller / owner / both);
 
 ## 🤝 Contributing
 

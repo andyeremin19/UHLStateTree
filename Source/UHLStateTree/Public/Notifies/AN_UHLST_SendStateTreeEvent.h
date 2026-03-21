@@ -6,7 +6,7 @@
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "GameplayTagContainer.h"
 #include "StructUtils/InstancedStruct.h"
-#include "UHL_AN_SendStateTreeEvent.generated.h"
+#include "AN_UHLST_SendStateTreeEvent.generated.h"
 
 class UStateTreeComponent;
 
@@ -32,7 +32,7 @@ enum class EUHLStateTreeNotifyResolve : uint8
  * Intended for montages on characters/pawns driven by an AI (or other) controller that owns the brain / State Tree component.
  */
 UCLASS(Blueprintable, Category = "UHL State Tree", meta = (DisplayName = "UHL · Send State Tree Event"))
-class UHLSTATETREE_API UUHL_AN_SendStateTreeEvent : public UAnimNotify
+class UHLSTATETREE_API UAN_UHLST_SendStateTreeEvent : public UAnimNotify
 {
 	GENERATED_BODY()
 
