@@ -1,14 +1,15 @@
 # 🌿 UHL State Tree
 
-**UHL-StateTree** - Unreal plugin providing tools for **StateTree AI**, similar to [UHL BehaviorTrees nodes](https://github.com/Ciberusps/UHLBehaviorTree). Simplify integration of StateTree into your project with ready-to-use components - tasks/evaluators/conditions/considirations and blueprint libraries.
+**UHL-StateTree** - Unreal plugin providing tools for **StateTree AI**, similar to [UHL BehaviorTrees nodes](https://github.com/Ciberusps/UHLBehaviorTree). Simplify integration of StateTree into your project with ready-to-use components - tasks/evaluators/conditions/considerations and blueprint libraries.
 
 Support: `UE5.5 - UE5.6`
 
 
 ## ✨ Features
 
-- cooldowns by tag
+- Cooldowns by gameplay tag
 - InRange and other nodes similar to [UnrealHelperLibrary](https://github.com/Ciberusps/unreal-helper-library) BehaviorTree nodes
+- **Anim notify** `UUHL_AN_SendStateTreeEvent` to raise State Tree events from montages/sequences
 
 
 ## 🚀 Install & ⬆️ Update
@@ -51,11 +52,17 @@ TODO how to setup in project
 >   - [TurnTo]()
 >   - [TODO: ActivateGameplayAbility]()
 >   - [TODO: ApplyGameplayEffect]()
+> - Animation notifies
+>   - [AN_SendStateTreeEvent]()
 
 ### `UUHLStateTreeComponent`
 
 Attach this component to an `AAIController` in Blueprint or C++.
 In `UE5.5` there is bug with LinkedStateTreeOverrides, this component adds ability to use LinkedStateTreeOverrides  
+
+### Animation notifies
+
+**`UAN_UHL_SendStateTreeEvent`** — from a montage/sequence calls `UStateTreeComponent::SendStateTreeEvent` (gameplay tag + optional `FInstancedStruct` payload). **`Resolve`** picks where to find the component (controller / owner / both);
 
 ## 🤝 Contributing
 
