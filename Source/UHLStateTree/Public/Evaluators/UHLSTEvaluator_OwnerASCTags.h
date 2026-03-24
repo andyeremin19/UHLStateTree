@@ -38,8 +38,8 @@ struct UHLSTATETREE_API FUHLSTEvaluator_OwnerASCTagsInstanceData
 };
 
 /**
- * Exposes the owner's ASC gameplay tags to the State Tree each frame.
- * Resolves and caches UAbilitySystemComponent once when the tree starts (TreeStart), then updates Tags on Tick.
+ * Exposes the owner's ASC gameplay tags to the State Tree.
+ * Resolves ASC and updates Tags on TreeStart and Tick.
  */
 USTRUCT(meta = (DisplayName = "Owner ASC Tags", Category = "UHLStateTree"))
 struct UHLSTATETREE_API FUHLSTEvaluator_OwnerASCTags : public FStateTreeEvaluatorCommonBase

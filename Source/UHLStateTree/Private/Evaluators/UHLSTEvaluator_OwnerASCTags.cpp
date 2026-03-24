@@ -50,12 +50,35 @@ namespace UHLSTEvaluator_OwnerASCTags_Private
 			InstanceData.CachedASC = nullptr;
 		}
 	}
+
+	static void RefreshTagsOutput(
+		FUHLSTEvaluator_OwnerASCTagsInstanceData& InstanceData,
+		FStateTreeExecutionContext& Context)
+	{
+		UAbilitySystemComponent* ASC = InstanceData.CachedASC.Get();
+		if (!IsValid(ASC))
+		{
+			RefreshCachedASC(InstanceData, Context);
+			ASC = InstanceData.CachedASC.Get();
+		}
+
+		if (IsValid(ASC))
+		{
+			InstanceData.Tags = ASC->GetOwnedGameplayTags();
+		}
+		else
+		{
+			InstanceData.Tags.Reset();
+		}
+	}
 }
 
 void FUHLSTEvaluator_OwnerASCTags::TreeStart(FStateTreeExecutionContext& Context) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-	UHLSTEvaluator_OwnerASCTags_Private::RefreshCachedASC(InstanceData, Context);
+	InstanceData.CachedASC = nullptr;
+	InstanceData.Tags.Reset();
+	UHLSTEvaluator_OwnerASCTags_Private::RefreshTagsOutput(InstanceData, Context);
 }
 
 void FUHLSTEvaluator_OwnerASCTags::TreeStop(FStateTreeExecutionContext& Context) const
@@ -68,22 +91,7 @@ void FUHLSTEvaluator_OwnerASCTags::TreeStop(FStateTreeExecutionContext& Context)
 void FUHLSTEvaluator_OwnerASCTags::Tick(FStateTreeExecutionContext& Context, const float /*DeltaTime*/) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
-	UAbilitySystemComponent* ASC = InstanceData.CachedASC.Get();
-	if (!IsValid(ASC))
-	{
-		UHLSTEvaluator_OwnerASCTags_Private::RefreshCachedASC(InstanceData, Context);
-		ASC = InstanceData.CachedASC.Get();
-	}
-
-	if (IsValid(ASC))
-	{
-		InstanceData.Tags = ASC->GetOwnedGameplayTags();
-	}
-	else
-	{
-		InstanceData.Tags.Reset();
-	}
+	UHLSTEvaluator_OwnerASCTags_Private::RefreshTagsOutput(InstanceData, Context);
 }
 
 #if WITH_EDITOR
