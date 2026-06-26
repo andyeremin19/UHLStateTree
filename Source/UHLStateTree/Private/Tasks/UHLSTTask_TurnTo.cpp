@@ -8,6 +8,8 @@
 #include "DrawDebugHelpers.h"
 #include "UHLAIBlueprintLibrary.h"
 #include "Core/UHLAIActorSettings.h"
+#include "UHLStateTree.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Character.h"
 #include "Engine/Engine.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -15,6 +17,43 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(UHLSTTask_TurnTo)
 
 #define LOCTEXT_NAMESPACE "UHLSTTask_TurnTo"
+
+namespace TurnToStatics
+{
+	static FString GetSettingsSourceName(EUHLSettingsSource Source)
+	{
+		switch (Source)
+		{
+			case EUHLSettingsSource::Actor:     return TEXT("Actor");
+			case EUHLSettingsSource::DataAsset: return TEXT("DataAsset");
+			case EUHLSettingsSource::Node:      return TEXT("Node");
+			default:                            return TEXT("Unknown");
+		}
+	}
+
+	static int32 CountTurnRanges(const FTurnSettings& TurnSettings)
+	{
+		int32 Count = 0;
+		for (const TTuple<FString, FTurnRanges>& Group : TurnSettings.TurnRangesGroups)
+		{
+			Count += Group.Value.TurnRanges.Num();
+		}
+		return Count;
+	}
+
+	// Always logs to LogUHLStateTree; prints on screen only when bDebug (stable key => updates in place).
+	static void Report(bool bDebug, const AActor* Pawn, const FString& Key, const FColor& Color, const FString& Message)
+	{
+		const FString PawnName = Pawn ? Pawn->GetName() : TEXT("NoPawn");
+		UE_LOG(LogUHLStateTree, Log, TEXT("[TurnTo][%s] %s"), *PawnName, *Message);
+		if (bDebug && GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				(uint64)GetTypeHash(Key + PawnName), 5.0f, Color,
+				FString::Printf(TEXT("[TurnTo][%s] %s"), *PawnName, *Message));
+		}
+	}
+}
 
 EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
@@ -71,10 +110,25 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Co
 			else
 			{
 				AIController->SetFocus(ActorValue, EAIFocusPriority::Gameplay);
-			    if (Pawn->GetClass()->ImplementsInterface(UUHLAIActorSettings::StaticClass()))
-			    {
-			        InstanceData.CurrentTurnSettings = GetTurnSettings(Context, Pawn);
-			    }
+				if (Pawn->GetClass()->ImplementsInterface(UUHLAIActorSettings::StaticClass()))
+				{
+					InstanceData.CurrentTurnSettings = GetTurnSettings(Context, Pawn);
+				}
+				// start the turn montage NOW, before CMC desired-rotation eats the angle on the enter hitch
+				if (ACharacter* EnterCharacter = AIController->GetCharacter())
+				{
+					const float EnterDeltaAngle = UUHLAIBlueprintLibrary::RelativeAngleToActor(EnterCharacter, ActorValue);
+					TryPlayTurnAnimation(Context, EnterCharacter, EnterDeltaAngle);
+					if (InstanceData.CurrentTurnSettings.bTurnOnlyWithAnims)
+					{
+						if (UCharacterMovementComponent* Move = EnterCharacter->GetCharacterMovement())
+						{
+							InstanceData.bCachedUseControllerDesiredRotation = Move->bUseControllerDesiredRotation;
+							Move->bUseControllerDesiredRotation = false;
+							InstanceData.bDesiredRotationDisabled = true;
+						}
+					}
+				}
 				Result = EStateTreeRunStatus::Running;
 			}
 		}
@@ -99,6 +153,20 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Co
 				if (Pawn->GetClass()->ImplementsInterface(UUHLAIActorSettings::StaticClass()))
 				{
 					InstanceData.CurrentTurnSettings = GetTurnSettings(Context, Pawn);
+				}
+				if (ACharacter* EnterCharacter = AIController->GetCharacter())
+				{
+					const float EnterDeltaAngle = UUHLAIBlueprintLibrary::RelativeAngleToVector(EnterCharacter, InstanceData.TargetLocation);
+					TryPlayTurnAnimation(Context, EnterCharacter, EnterDeltaAngle);
+					if (InstanceData.CurrentTurnSettings.bTurnOnlyWithAnims)
+					{
+						if (UCharacterMovementComponent* Move = EnterCharacter->GetCharacterMovement())
+						{
+							InstanceData.bCachedUseControllerDesiredRotation = Move->bUseControllerDesiredRotation;
+							Move->bUseControllerDesiredRotation = false;
+							InstanceData.bDesiredRotationDisabled = true;
+						}
+					}
 				}
 				Result = EStateTreeRunStatus::Running;
 			}
@@ -127,6 +195,17 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Co
 	// 		}
 	// 	}
 	// }
+
+	TurnToStatics::Report(InstanceData.bDebug, Pawn, TEXT("Enter"), FColor::White,
+		FString::Printf(TEXT("Enter: Target=%s | Source=%s | DataAsset=%s | ImplementsActorSettings=%s | TurnRanges=%d | bTurnOnlyWithAnims=%d | bStopMontageOnGoalReached=%d | Result=%d"),
+			InstanceData.TargetActor ? *InstanceData.TargetActor->GetName() : *InstanceData.TargetLocation.ToString(),
+			*TurnToStatics::GetSettingsSourceName(InstanceData.SettingsSource),
+			InstanceData.RotateToAnimationsDataAsset ? *InstanceData.RotateToAnimationsDataAsset->GetName() : TEXT("None"),
+			Pawn->GetClass()->ImplementsInterface(UUHLAIActorSettings::StaticClass()) ? TEXT("true") : TEXT("false"),
+			TurnToStatics::CountTurnRanges(InstanceData.CurrentTurnSettings),
+			InstanceData.CurrentTurnSettings.bTurnOnlyWithAnims,
+			InstanceData.CurrentTurnSettings.bStopMontageOnGoalReached,
+			(int32)Result));
 
 	return Result;
 }
@@ -178,6 +257,16 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::Tick(
 			? UUHLAIBlueprintLibrary::RelativeAngleToActor(AICharacter, InstanceData.TargetActor)
 			: UUHLAIBlueprintLibrary::RelativeAngleToVector(AICharacter, InstanceData.TargetLocation);
 
+		UCharacterMovementComponent* Move = AICharacter ? AICharacter->GetCharacterMovement() : nullptr;
+		TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("TickAngle"), FColor::Magenta,
+			FString::Printf(TEXT("DeltaAngle=%.1f | RotRate.Yaw=%.0f | bUseCtrlDesiredRot=%d | bOrientToMove=%d | bUseCtrlRotYaw=%d | RootMotion=%d"),
+				DeltaAngle,
+				Move ? Move->RotationRate.Yaw : -1.f,
+				Move ? (int32)Move->bUseControllerDesiredRotation : -1,
+				Move ? (int32)Move->bOrientRotationToMovement : -1,
+				AICharacter ? (int32)AICharacter->bUseControllerRotationYaw : -1,
+				AICharacter ? (int32)AICharacter->IsPlayingRootMotion() : -1));
+
 		if (InstanceData.bDebug)
 		{
 			FString Message = FString::Printf(TEXT("DeltaAngle %f"), DeltaAngle);
@@ -205,6 +294,11 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::Tick(
 		        bCanStopMontage = InstanceData.CurrentTurnSettings.bStopMontageOnGoalReached;
 		    }
 
+			TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("GoalReached"), FColor::Cyan,
+				FString::Printf(TEXT("goal reached: DeltaAngle=%.1f | bStopMontageOnGoalReached=%d (overridden=%d) -> %s"),
+					DeltaAngle, bCanStopMontage, InstanceData.CurrentTurnRange.bOverrideStopMontageOnGoalReached,
+					bCanStopMontage ? TEXT("StopAnimMontage") : TEXT("let montage finish")));
+
 		    if (bCanStopMontage)
 		    {
 		        AICharacter->StopAnimMontage();
@@ -225,35 +319,33 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::Tick(
 		}
 	    else
 	    {
-	        if (TurnToStatics::IsTurnWithAnimationRequired(AICharacter))
-	        {
-	        	// if (AIController->GetFocusActorForPriority(EAIFocusPriority::Gameplay) != InstanceData.TargetActor)
-	        	// {
-	        	// 	AIController->SetFocus(InstanceData.TargetActor, EAIFocusPriority::Gameplay);
-	        	// }
+	    	if (TurnToStatics::IsTurnWithAnimationRequired(AICharacter))
+	    	{
+	    		const bool bPlayed = TryPlayTurnAnimation(Context, AICharacter, DeltaAngle);
 
-		        bool bCurrentTurnRangeSet = false;
-	            InstanceData.CurrentTurnRange = TurnToStatics::GetTurnRange(DeltaAngle, bCurrentTurnRangeSet, InstanceData.CurrentTurnSettings);
-	            if (bCurrentTurnRangeSet && InstanceData.CurrentTurnRange.AnimMontage)
-	            {
-	                AICharacter->PlayAnimMontage(InstanceData.CurrentTurnRange.AnimMontage);
-	            }
-
-	            // TODO тут ошибка?
-	            // finish if no turn animation found and "bTurnOnlyWithAnims"
-	            if (!bCurrentTurnRangeSet && InstanceData.CurrentTurnSettings.bTurnOnlyWithAnims)
-	            {
-		            AIController->ClearFocus(EAIFocusPriority::Gameplay);
-	                // CleanUp(*AIController, NodeMemory);
-		            return InstanceData.bInfinite
+	    		// finish if no turn animation found and "bTurnOnlyWithAnims"
+	    		if (!bPlayed && InstanceData.CurrentTurnSettings.bTurnOnlyWithAnims)
+	    		{
+	    			TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("Finish"), FColor::Yellow,
+						TEXT("bTurnOnlyWithAnims=true & no range -> finish (Succeeded)"));
+	    			AIController->ClearFocus(EAIFocusPriority::Gameplay);
+	    			return InstanceData.bInfinite
 						? EStateTreeRunStatus::Running
 						: EStateTreeRunStatus::Succeeded;
-	            }
-	        }
+	    		}
+	    	}
+	    	else
+	    	{
+	    		TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("Blocked"), FColor::Orange,
+					FString::Printf(TEXT("turn-by-anim skipped: IsPlayingRootMotion=%d (DeltaAngle=%.1f)"),
+						AICharacter ? (int32)AICharacter->IsPlayingRootMotion() : -1, DeltaAngle));
+	    	}
 	    }
 	}
 	else
 	{
+		TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("NoFocal"), FColor::Red,
+			TEXT("invalid FocalPoint -> clear focus & finish (no target/focus set)"));
 		AIController->ClearFocus(EAIFocusPriority::Gameplay);
 		// CleanUp(*AIController, NodeMemory);
 		return InstanceData.bInfinite
@@ -262,6 +354,24 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::Tick(
 	}
 
 	return FStateTreeTaskCommonBase::Tick(Context, DeltaTime);
+}
+
+void FUHLSTTask_TurnTo::ExitState(
+	FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (InstanceData.bDesiredRotationDisabled && InstanceData.AIController)
+	{
+		if (ACharacter* AICharacter = InstanceData.AIController->GetCharacter())
+		{
+			if (UCharacterMovementComponent* Move = AICharacter->GetCharacterMovement())
+			{
+				Move->bUseControllerDesiredRotation = InstanceData.bCachedUseControllerDesiredRotation;
+			}
+		}
+		InstanceData.bDesiredRotationDisabled = false;
+	}
 }
 
 #if WITH_EDITOR
@@ -292,7 +402,15 @@ FTurnSettings FUHLSTTask_TurnTo::GetTurnSettings(FStateTreeExecutionContext& Con
 	}
 	if (InstanceData.SettingsSource == EUHLSettingsSource::DataAsset)
 	{
-		Result = InstanceData.RotateToAnimationsDataAsset->TurnSettings;
+		if (InstanceData.RotateToAnimationsDataAsset)
+		{
+			Result = InstanceData.RotateToAnimationsDataAsset->TurnSettings;
+		}
+		else
+		{
+			TurnToStatics::Report(InstanceData.bDebug, Actor, TEXT("NoDataAsset"), FColor::Red,
+				TEXT("SettingsSource=DataAsset but RotateToAnimationsDataAsset is NULL -> empty TurnSettings"));
+		}
 	}
 	if (InstanceData.SettingsSource == EUHLSettingsSource::Node)
 	{
@@ -300,5 +418,43 @@ FTurnSettings FUHLSTTask_TurnTo::GetTurnSettings(FStateTreeExecutionContext& Con
 	}
 	return Result;
 }
+
+bool FUHLSTTask_TurnTo::TryPlayTurnAnimation(
+	FStateTreeExecutionContext& Context, ACharacter* AICharacter, float DeltaAngle) const
+{
+	if (!AICharacter) return false;
+
+	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	bool bCurrentTurnRangeSet = false;
+	InstanceData.CurrentTurnRange = TurnToStatics::GetTurnRange(DeltaAngle, bCurrentTurnRangeSet, InstanceData.CurrentTurnSettings);
+
+	if (bCurrentTurnRangeSet && InstanceData.CurrentTurnRange.AnimMontage)
+	{
+		// don't restart the same montage every tick
+		const bool bAlreadyPlaying = AICharacter->GetCurrentMontage() == InstanceData.CurrentTurnRange.AnimMontage;
+		if (!bAlreadyPlaying)
+		{
+			AICharacter->PlayAnimMontage(InstanceData.CurrentTurnRange.AnimMontage);
+			TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("Play"), FColor::Green,
+				FString::Printf(TEXT("DeltaAngle=%.1f -> Range '%s' [%.0f..%.0f] PLAY '%s'"),
+					DeltaAngle, *InstanceData.CurrentTurnRange.Name,
+					InstanceData.CurrentTurnRange.Range.GetLowerBoundValue(),
+					InstanceData.CurrentTurnRange.Range.GetUpperBoundValue(),
+					*InstanceData.CurrentTurnRange.AnimMontage->GetName()));
+		}
+		return true;
+	}
+
+	FString Reason = !bCurrentTurnRangeSet
+		? FString::Printf(TEXT("no TurnRange covers DeltaAngle=%.1f (ranges=%d)"),
+			DeltaAngle, TurnToStatics::CountTurnRanges(InstanceData.CurrentTurnSettings))
+		: FString::Printf(TEXT("Range '%s' matched but AnimMontage is NULL"),
+			*InstanceData.CurrentTurnRange.Name);
+	TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("NoPlay"), FColor::Red,
+		FString::Printf(TEXT("NO MONTAGE: %s"), *Reason));
+	return false;
+}
+
 
 #undef LOCTEXT_NAMESPACE
