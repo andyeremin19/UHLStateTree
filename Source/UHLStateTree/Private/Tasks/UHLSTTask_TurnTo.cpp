@@ -58,6 +58,8 @@ namespace TurnToStatics
 EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+	// fresh activation - forget previous turn direction (anti-oscillation state)
+	InstanceData.LastTurnSign = 0;
 	EStateTreeRunStatus Result = InstanceData.bInfinite
 									? EStateTreeRunStatus::Running
 									: EStateTreeRunStatus::Failed;
@@ -435,7 +437,26 @@ bool FUHLSTTask_TurnTo::TryPlayTurnAnimation(
 		const bool bAlreadyPlaying = AICharacter->GetCurrentMontage() == InstanceData.CurrentTurnRange.AnimMontage;
 		if (!bAlreadyPlaying)
 		{
+			// --- anti-oscillation (hysteresis) ---
+			// A brand-new turn that reverses direction while we're already close to the goal
+			// means the previous montage overshot the target. Playing the opposite montage
+			// would start a ping-pong, so finish instead (return false -> caller succeeds when
+			// bTurnOnlyWithAnims). Large reversals (target genuinely moved) are still played.
+			const int32 NewTurnSign = (DeltaAngle > 0.f) ? 1 : ((DeltaAngle < 0.f) ? -1 : 0);
+			if (InstanceData.OvershootTolerance > 0.0f
+				&& InstanceData.LastTurnSign != 0
+				&& NewTurnSign != 0
+				&& NewTurnSign != InstanceData.LastTurnSign
+				&& FMath::Abs(DeltaAngle) < InstanceData.OvershootTolerance)
+			{
+				TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("AntiOsc"), FColor::Yellow,
+					FString::Printf(TEXT("direction reversed (%d -> %d) while |DeltaAngle|=%.1f < %.1f -> skip opposite montage (finish)"),
+						InstanceData.LastTurnSign, NewTurnSign, FMath::Abs(DeltaAngle), InstanceData.OvershootTolerance));
+				return false;
+			}
+
 			AICharacter->PlayAnimMontage(InstanceData.CurrentTurnRange.AnimMontage);
+			InstanceData.LastTurnSign = NewTurnSign;
 			TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("Play"), FColor::Green,
 				FString::Printf(TEXT("DeltaAngle=%.1f -> Range '%s' [%.0f..%.0f] PLAY '%s'"),
 					DeltaAngle, *InstanceData.CurrentTurnRange.Name,

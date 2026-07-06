@@ -45,6 +45,13 @@ struct UHLSTATETREE_API FUHLSTTask_TurnToInstanceData
     UPROPERTY(EditAnywhere, Category="Parameter")
     bool bDebug = false;
 
+	// Anti-overshoot hysteresis: if a turn animation overshoots the goal and the
+	// next required turn would reverse direction while the remaining angle is within
+	// this tolerance, accept the current heading as "reached" instead of playing an
+	// opposite turn (prevents the +-15deg ping-pong near the goal). 0 = disabled.
+	UPROPERTY(EditAnywhere, Category="Parameter", meta = (ClampMin = "0.0", Units="Degrees"))
+	float OvershootTolerance = 15.0f;
+
 	// TODO don't woks for now
 	UPROPERTY()
 	bool bInfinite = false;
@@ -62,6 +69,11 @@ struct UHLSTATETREE_API FUHLSTTask_TurnToInstanceData
 	FTurnSettings CurrentTurnSettings;
 	UPROPERTY(Transient)
 	FTurnRange CurrentTurnRange;
+
+	// --- anti-overshoot hysteresis state ---
+	// sign (+1 / -1) of the last turn animation that was actually started; 0 = none yet
+	UPROPERTY(Transient)
+	int32 LastTurnSign = 0;
 
 	// --- restore CMC desired-rotation after anim-only turn ---
 	UPROPERTY(Transient)
