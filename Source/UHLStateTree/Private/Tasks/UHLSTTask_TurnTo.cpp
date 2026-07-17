@@ -60,6 +60,8 @@ EStateTreeRunStatus FUHLSTTask_TurnTo::EnterState(FStateTreeExecutionContext& Co
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
 	// fresh activation - forget previous turn direction (anti-oscillation state)
 	InstanceData.LastTurnSign = 0;
+	// fresh activation - allow a new best-single montage to be chosen
+	InstanceData.bBestSingleMontagePlayed = false;
 	EStateTreeRunStatus Result = InstanceData.bInfinite
 									? EStateTreeRunStatus::Running
 									: EStateTreeRunStatus::Failed;
@@ -362,7 +364,7 @@ void FUHLSTTask_TurnTo::ExitState(
 	FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
-
+	
 	if (InstanceData.bDesiredRotationDisabled && InstanceData.AIController)
 	{
 		if (ACharacter* AICharacter = InstanceData.AIController->GetCharacter())
@@ -427,6 +429,36 @@ bool FUHLSTTask_TurnTo::TryPlayTurnAnimation(
 	if (!AICharacter) return false;
 
 	FInstanceDataType& InstanceData = Context.GetInstanceData(*this);
+
+	if (InstanceData.CurrentTurnSettings.bUseBestSingleMontage)
+	{
+		// commit to exactly one montage for the whole turn; motion warping inside it finishes the residual angle
+		if (InstanceData.bBestSingleMontagePlayed)
+		{
+			// still playing -> keep waiting (in-progress, no chaining);
+			// finished but goal not yet reached (warp undershoot) -> return false so bTurnOnlyWithAnims finishes
+			return AICharacter->GetCurrentMontage() == InstanceData.CurrentTurnRange.AnimMontage;
+		}
+
+		bool bBestRangeSet = false;
+		InstanceData.CurrentTurnRange = TurnToStatics::GetBestSingleTurnRange(DeltaAngle, bBestRangeSet, InstanceData.CurrentTurnSettings);
+		if (bBestRangeSet && InstanceData.CurrentTurnRange.AnimMontage)
+		{
+			AICharacter->PlayAnimMontage(InstanceData.CurrentTurnRange.AnimMontage);
+			InstanceData.bBestSingleMontagePlayed = true;
+			InstanceData.LastTurnSign = (DeltaAngle > 0.f) ? 1 : ((DeltaAngle < 0.f) ? -1 : 0);
+			TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("PlayBestSingle"), FColor::Green,
+				FString::Printf(TEXT("BEST-SINGLE DeltaAngle=%.1f -> Range '%s' (TurnAngle=%.0f) PLAY '%s' (warp finishes residual)"),
+					DeltaAngle, *InstanceData.CurrentTurnRange.Name, InstanceData.CurrentTurnRange.TurnAngle,
+					*InstanceData.CurrentTurnRange.AnimMontage->GetName()));
+			return true;
+		}
+
+		// |DeltaAngle| smaller than the smallest montage's nominal -> nothing to play (warp/precision handles it)
+		TurnToStatics::Report(InstanceData.bDebug, AICharacter, TEXT("NoBestSingle"), FColor::Red,
+			FString::Printf(TEXT("BEST-SINGLE: no montage with TurnAngle <= |%.1f| -> finish"), DeltaAngle));
+		return false;
+	}
 
 	bool bCurrentTurnRangeSet = false;
 	InstanceData.CurrentTurnRange = TurnToStatics::GetTurnRange(DeltaAngle, bCurrentTurnRangeSet, InstanceData.CurrentTurnSettings);

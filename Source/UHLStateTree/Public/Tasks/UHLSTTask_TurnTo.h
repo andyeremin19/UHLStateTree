@@ -44,7 +44,7 @@ struct UHLSTATETREE_API FUHLSTTask_TurnToInstanceData
 
     UPROPERTY(EditAnywhere, Category="Parameter")
     bool bDebug = false;
-
+	
 	// Anti-overshoot hysteresis: if a turn animation overshoots the goal and the
 	// next required turn would reverse direction while the remaining angle is within
 	// this tolerance, accept the current heading as "reached" instead of playing an
@@ -74,6 +74,12 @@ struct UHLSTATETREE_API FUHLSTTask_TurnToInstanceData
 	// sign (+1 / -1) of the last turn animation that was actually started; 0 = none yet
 	UPROPERTY(Transient)
 	int32 LastTurnSign = 0;
+
+	// --- best-single-montage state ---
+	// true after we committed to & started the single best montage for the whole turn;
+	// prevents chaining another (smaller) montage on later ticks while it plays / warps.
+	UPROPERTY(Transient)
+	bool bBestSingleMontagePlayed = false;
 
 	// --- restore CMC desired-rotation after anim-only turn ---
 	UPROPERTY(Transient)
