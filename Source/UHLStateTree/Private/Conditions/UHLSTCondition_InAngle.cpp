@@ -171,3 +171,4 @@ FText FUHLSTCondition_InAngle::GetDescription(const FGuid& ID, FStateTreeDataVie
 
 
 
+#undef LOCTEXT_NAMESPACE
